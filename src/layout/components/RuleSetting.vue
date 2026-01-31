@@ -51,7 +51,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, defineEmits, computed } from 'vue'
 
 function genId() {
@@ -64,14 +64,7 @@ function genId() {
 import { useIndicatorStore } from '@/stores/useIndicStore'
 const indicatorStore = useIndicatorStore()
 
-const rules = ref<Array<{
-  id: string
-  level: string
-  task: string
-  taskName: string
-  count: number
-  score: number
-}>>([])
+const rules = ref([])
 rules.value = indicatorStore.levels.map(level => (level.tasks || []).map(task => ({
   id: genId(),
   level: level.name,
@@ -83,12 +76,7 @@ rules.value = indicatorStore.levels.map(level => (level.tasks || []).map(task =>
 
 const showDialog = ref(false)
 const formRef = ref(null)
-const form = ref<{
-  id?: string
-  level: string
-  task: string
-  count: number
-}>({
+const form = ref({
   level: '',
   task: '',
   count: 0

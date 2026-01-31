@@ -95,7 +95,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { defineEmits, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -107,14 +107,7 @@ const indicatorStore = useIndicatorStore()
 const performanceIndicators = indicatorStore.performanceIndicators
 const taskIndicators = indicatorStore.taskIndicators
 
-const rows = ref<{
-  id: string
-  date: string
-  week: string
-  nj: string
-  userKey: string
-  [key: string]: any
-}[]>([])
+const rows = ref([])
 
 const showDialog = ref(false)
 const formRef = ref(null)

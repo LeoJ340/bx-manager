@@ -100,7 +100,7 @@
 
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, computed, defineEmits } from 'vue'
 import { ElMessage } from 'element-plus'
 
@@ -144,7 +144,7 @@ async function parseExcelFile(file) {
     const taskLevelSheetName = '作业等级'
     if (workbook.SheetNames.includes(taskLevelSheetName)) {
       const taskLevelSheet = workbook.Sheets[taskLevelSheetName]
-      const rows: any[] = XLSX.utils.sheet_to_json(taskLevelSheet)
+      const rows = XLSX.utils.sheet_to_json(taskLevelSheet)
       const levels = Object.entries(rows[0] || {}).map(([key, value]) => ({
         name: String(key).trim(),
         score: typeof value === 'number' ? value : (Number(value) || value)
