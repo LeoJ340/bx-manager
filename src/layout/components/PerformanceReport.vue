@@ -13,6 +13,7 @@
         >
           <el-button type="primary" plain>导入Excel</el-button>
         </el-upload>
+        <el-button type="primary" @click="exportDetailsExcel" :disabled="!rows.length">导出明细</el-button>
         <el-button type="primary" @click="openDialog">新增报备</el-button>
       </div>
     </div>
@@ -265,6 +266,45 @@ async function parseExcelFile (file) {
   }
 }
 
+async function exportDetailsExcel() {
+  if (!rows.value || rows.value.length === 0) {
+    ElMessage.warning('暂无明细数据可导出')
+    return
+  }
+  try {
+    const XLSX = await import('xlsx')
+    const header = [
+      '日期',
+      '周',
+      'NJ',
+      ...performanceIndicators.map(i => i.name),
+      ...taskIndicators.map(i => i.name)
+    ]
+
+    const data = [header]
+    for (const item of rows.value) {
+      const row = [
+        item.date || '',
+        item.week || '',
+        item.nj || '',
+        ...performanceIndicators.map(i => Number(item[i.key]) || 0),
+        ...taskIndicators.map(i => Number(item[i.key]) || 0),
+      ]
+      data.push(row)
+    }
+    console.log(data)
+
+    const ws = XLSX.utils.aoa_to_sheet(data)
+    const wb = { Sheets: { '明细': ws }, SheetNames: ['明细'] }
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([wbout], { type: 'application/octet-stream' })
+    downloadFile(blob, `明细_${formatDate(new Date())}.xlsx`)
+  } catch (err) {
+    console.error('导出 Excel 失败', err)
+    ElMessage.error('导出 Excel 失败')
+  }
+}
+
 const totalSummary = ref([])
 
 function summary () {
@@ -331,19 +371,23 @@ async function exportSummaryExcel() {
     const wb = { Sheets: { '统计': ws }, SheetNames: ['统计'] }
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
     const blob = new Blob([wbout], { type: 'application/octet-stream' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `统计_${formatDate(new Date())}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-    ElMessage.success('已开始下载 Excel')
+    downloadFile(blob, `统计_${formatDate(new Date())}.xlsx`)
   } catch (err) {
     console.error('导出 Excel 失败', err)
     ElMessage.error('导出 Excel 失败')
   }
+}
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+  ElMessage.success('开始下载文件')
 }
 
 
@@ -353,7 +397,7 @@ function prev () {
     '确定返回上一步？当前填写的数据将不会被保存。',
     '确认返回',
     {
-      confirmButtonText: '返回上一步',
+      confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
     }
