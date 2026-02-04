@@ -91,7 +91,6 @@
 
   <div class="mt-4 flex justify-center gap-2">
     <el-button @click="prev">上一步</el-button>
-    <el-button type="primary" @click="next">生成统计</el-button>
   </div>
 </template>
 
@@ -125,7 +124,6 @@ function openDialog() {
 
 function closeDialog () {
   if (formRef.value && formRef.value.resetFields) formRef.value.resetFields()
-  // 重置内部 form 值，避免残留导致下一次添加顺序异常
   form.value = { date: null, userKey: '', content: '' }
   showDialog.value = false
 }
@@ -210,16 +208,18 @@ async function parseExcelFile (file) {
     const arrayBuffer = await file.arrayBuffer()
     const XLSX = await import('xlsx')
     const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-    const sheet = workbook.Sheets[workbook.SheetNames[1]]
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
     const sheetRows = XLSX.utils.sheet_to_json(sheet)
+    if (!sheetRows.length) {
+      ElMessage.error('未检测到Excel文件Sheet1工作表中存在有效的报备数据，请检查文件内容是否正确')
+      return
+    }
+    console.log('表格内容：', sheetRows)
     const result = sheetRows.map(r => {
       const { date, week, ...rest } = r
       return Object.entries(rest).map(([username, content]) => {
         const user = userStore.users.find(u => u.name === username)
-        if (!user) {
-          console.warn(`跳过未知用户 "${username}" 的报备数据`)
-          return null
-        }
+        if (!user) return { unknownUser: username }
         const resultObj = content.split('，').map(e => {
           const [name, count] = e.split(' ')
           const indicator = indicatorStore.indicators.find(i => i.name === name) || {}
@@ -236,15 +236,20 @@ async function parseExcelFile (file) {
         return {
           id: genId(),
           date: formatDate(date),
-          week: week,
+          week,
           nj: user.name,
           userKey: user.key,
           ...resultObj
         }
       })
     }).flat()
-    console.log(result)
-    rows.value = result
+    console.log('解析明细结果：', result)
+    rows.value = result.filter(r => !r.unknownUser)
+    const unknownUsers = result.filter(r => r.unknownUser).map(r => r.unknownUser)
+    if (unknownUsers.length) {
+      const unknownUsersStr = [...new Set(unknownUsers)].join(', ')
+      ElMessage.warning(`导入完成，跳过未知用户的报备数据：${unknownUsersStr}，若需添加请先在db文件中创建对应NJ，并重新完成数据初始化步骤`)
+    }
   } catch (err) {
     console.error('导入Excel失败', err)
     ElMessage.error('导入Excel失败，请检查文件格式及内容是否正确')
@@ -333,7 +338,7 @@ async function exportSummaryExcel() {
 }
 
 
-const emit = defineEmits(['prevStep', 'nextStep'])
+const emit = defineEmits(['prevStep'])
 function prev () {
   ElMessageBox.confirm(
     '确定返回上一步？当前填写的数据将不会被保存。',
@@ -346,10 +351,6 @@ function prev () {
   ).then(() => {
     emit('prevStep')
   })
-}
-function next() {
-
-  emit('nextStep')
 }
 </script>
 
