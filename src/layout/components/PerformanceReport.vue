@@ -111,7 +111,6 @@ const rows = ref([])
 const showDialog = ref(false)
 const formRef = ref(null)
 const form = ref({ date: null, userKey: '', content: '' })
-
 const rules = {
   date: [{ required: true, message: '请选择日期', trigger: 'change' }],
   userKey: [{ required: true, message: '请选择用户', trigger: 'change' }],
@@ -126,6 +125,15 @@ function closeDialog () {
   if (formRef.value && formRef.value.resetFields) formRef.value.resetFields()
   form.value = { date: null, userKey: '', content: '' }
   showDialog.value = false
+}
+
+function excelSerialToDate(serial) {
+  if (serial == null) return null
+  const num = Number(serial)
+  if (Number.isNaN(num)) return null
+  // Excel 序列号基准：1970-01-01 对应 25569，计算毫秒
+  const ms = Math.round((num - 25569) * 86400 * 1000)
+  return new Date(ms)
 }
 
 function formatDate(d) {
@@ -217,6 +225,7 @@ async function parseExcelFile (file) {
     console.log('表格内容：', sheetRows)
     const result = sheetRows.map(r => {
       const { date, week, ...rest } = r
+      const realDate = excelSerialToDate(date)
       return Object.entries(rest).map(([username, content]) => {
         const user = userStore.users.find(u => u.name === username)
         if (!user) return { unknownUser: username }
@@ -235,7 +244,7 @@ async function parseExcelFile (file) {
         }, {});
         return {
           id: genId(),
-          date: formatDate(date),
+          date: formatDate(realDate),
           week,
           nj: user.name,
           userKey: user.key,
