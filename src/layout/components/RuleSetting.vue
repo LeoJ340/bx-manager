@@ -53,20 +53,14 @@
 
 <script setup>
 import { ref, defineEmits, computed } from 'vue'
-
-function genId() {
-  try {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
-  } catch (e) {}
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`
-}
+import { useGenerateKey } from '@/utils/index'
 
 import { useIndicatorStore } from '@/stores/useIndicStore'
 const indicatorStore = useIndicatorStore()
 
 const rules = ref([])
 rules.value = indicatorStore.levels.map(level => (level.tasks || []).map(task => ({
-  id: genId(),
+  id: useGenerateKey(),
   level: level.name,
   task: task.task,
   taskName: indicatorStore.taskIndicators.find(i => i.key === task.task)?.name || '',
@@ -140,7 +134,7 @@ function confirmRule() {
     const task = indicatorStore.taskIndicators.find(i => i.key === form.value.task) || {}
     const score = indicatorStore.levels.find(l => l.name === form.value.level)?.score || 0
     const item = {
-      id: form.value.id || genId(),
+      id: form.value.id || useGenerateKey(),
       level: form.value.level,
       task: form.value.task,
       taskName: task.name,

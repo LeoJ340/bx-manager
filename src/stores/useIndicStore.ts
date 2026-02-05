@@ -11,6 +11,7 @@ export interface Indicator {
   type: IndicatorType
   key: string
   name: string
+  align: Array<string>
 }
 
 export interface Level {
