@@ -2,27 +2,53 @@
   <el-card class="bg-white p-4">
 
     <div class="mb-4 flex justify-between items-center">
-      <div class="text-lg font-semibold">绩效填报</div>
-      <div class="flex gap-2">
-        <el-upload
-            id="uploadExcel"
-            :show-file-list="false"
-            :auto-upload="false"
-            accept=".xls,.xlsx"
-            @change="uploadFile"
-        >
-          <el-button type="primary" plain>导入Excel</el-button>
-        </el-upload>
-        <el-button type="primary" @click="exportDetailsExcel" :disabled="!rows.length">导出明细</el-button>
-        <el-button type="primary" @click="openDialog">新增报备</el-button>
-        <el-button type="danger" @click="clearRows">清空</el-button>
-      </div>
+      <el-form :inline="true" :model="searchForm">
+        <el-form-item label="日期" prop="date">
+          <el-date-picker
+              v-model="searchForm.date"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择填报日期"
+              clearable
+          />
+        </el-form-item>
+
+        <el-form-item label="NJ" prop="userKey">
+          <el-select v-model="searchForm.userKey" placeholder="选择NJ" clearable style="width: 200px">
+            <el-option v-for="u in userStore.users" :key="u.key" :label="u.name" :value="u.key" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="search">筛选</el-button>
+        </el-form-item>
+        <el-form-item>
+          <el-upload
+              id="uploadExcel"
+              :show-file-list="false"
+              :auto-upload="false"
+              accept=".xls,.xlsx"
+              @change="uploadFile"
+          >
+            <el-button type="primary" plain>导入Excel</el-button>
+          </el-upload>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="exportDetailsExcel" :disabled="!rows.length">导出明细</el-button>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="openDialog">新增报备</el-button>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="danger" @click="clearRows">清空</el-button>
+        </el-form-item>
+      </el-form>
     </div>
 
-    <el-table :data="rows" border max-height="400" style="width: 100%">
+    <el-table :data="details" border max-height="400" style="width: 100%">
       <el-table-column fixed prop="date" label="日期" width="105" />
       <el-table-column fixed prop="week" label="周" width="55" />
       <el-table-column fixed prop="nj" label="NJ" width="130" />
+      <el-table-column prop="active" label="活跃" />
 
       <el-table-column
         v-for="ind in performanceIndicators"
@@ -77,7 +103,9 @@
     </div>
 
     <el-table v-if="totalSummary.length" :data="totalSummary" border max-height="500" class="mt-4" style="width: 100%">
+      <el-table-column fixed prop="time" label="时间" width="130" />
       <el-table-column fixed prop="nj" label="NJ" width="130" />
+      <el-table-column prop="active" label="活跃" />
       <el-table-column
           v-for="ind in performanceIndicators"
           :key="ind.key"
@@ -97,7 +125,13 @@
   <el-dialog v-model="showDialog" title="新增报备">
     <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
       <el-form-item label="日期" prop="date">
-        <el-date-picker v-model="form.date" type="date" placeholder="选择日期" style="width: 100%" />
+        <el-date-picker
+            v-model="form.date"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择日期"
+            style="width: 100%"
+        />
       </el-form-item>
 
       <el-form-item label="用户" prop="userKey">
@@ -123,21 +157,36 @@
 </template>
 
 <script setup>
-// TODO：支持查看配置数据
-import { defineEmits, h, ref } from 'vue'
+import { defineEmits, h, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { InfoFilled } from '@element-plus/icons-vue'
 import { useGenerateKey } from '@/utils/index'
 
 import { useUserStore } from '@/stores/useUserStore'
 import { useIndicatorStore } from '@/stores/useIndicStore'
+import { useAppStore } from '@/stores/useAppStore'
 
+const { roomPrefix } = useAppStore()
 const userStore = useUserStore()
 const indicatorStore = useIndicatorStore()
 const performanceIndicators = indicatorStore.performanceIndicators
 const taskIndicators = indicatorStore.taskIndicators
 
 const rows = ref([])
+const searchForm = reactive({
+  date: '',
+  userKey: '',
+  user: ''
+})
+const details = ref([])
+function search () {
+  details.value = rows.value.filter(r => {
+    const matchesDate = searchForm.date ? r.date === searchForm.date : true
+    const matchesUser = searchForm.userKey ? r.userKey === searchForm.userKey : true
+    return matchesDate && matchesUser
+  })
+}
+watch(rows, search)
 
 const showDialog = ref(false)
 const formRef = ref(null)
@@ -192,32 +241,39 @@ function submit() {
       ElMessage.error('选择的用户无效')
       return
     }
-    const parts = String(form.value.content || '').split('\n')
-    const realContent = parts.length > 1 ? parts.slice(1).join('\n') : parts[0]
-    const resultObj = String(realContent || '').split('，').map(e => {
-      const [name, count] = e.split(' ')
-      const indicator = indicatorStore.indicators.find(i => i.name === name) || {}
-      return {
-        type: indicator.type,
-        key: indicator.key,
-        name,
-        count: Number(count) || 0,
-      }
-    }).reduce((obj, item) => {
-      obj[item.key] = item.count; // 核心：key为属性，count为值
-      return obj;
-    }, {});
+    const contents = form.value.content.split(/[\r\n]+/)
+    const activeContent = contents.find(c => c.trim().startsWith('活跃')) || ''
+    const indContents = contents.find(c => c.trim().startsWith('绩效')) || ''
+    const taskContents = contents.find(c => c.trim().startsWith('作业')) || ''
+    const indParseResult = parseReportingContent(indContents.replace(/绩效[:：]/, ''))
+    const taskParseResult = parseReportingContent(taskContents.replace(/作业[:：]/, ''))
     const item = {
       id: useGenerateKey(),
       date: formatDate(form.value.date),
       week: weekLabel(form.value.date),
       nj: user.name,
       userKey: user.key,
-      ...resultObj
+      active: activeContent.trim().replace(/活跃[:：]/, ''),
+      ...indParseResult,
+      ...taskParseResult
     }
-    console.log('新增报备项', item)
-    rows.value.push(item)
-    closeDialog()
+    const continueFun = () => {
+      console.log('新增报备项', item)
+      rows.value.push(item)
+      closeDialog()
+    }
+    const unknownIndicators = Object.entries({ ...indParseResult, ...taskParseResult }).filter(([_, v]) => Number.isNaN(v)).map(([k]) => k)
+    if (unknownIndicators.length) {
+      ElMessageBox({
+        title: '存在未知指标，继续可忽略以下异常',
+        message: `报备内容中存在未知指标：${unknownIndicators.join(', ')}`,
+        confirmButtonText: '继续'
+      }).then(() => {
+        continueFun()
+      })
+      return
+    }
+    continueFun()
   })
 }
 
@@ -257,22 +313,57 @@ async function parseExcelFile (file) {
       return Object.entries(rest).map(([username, content]) => {
         const user = userStore.users.find(u => u.name === username)
         if (!user) return { unknownUser: username }
-        const parseResult = parseReportingContent(content)
+        const contents = content.split(/[\r\n]+/)
+        const activeContent = contents.find(c => c.trim().startsWith('活跃')) || ''
+        const indContents = contents.find(c => c.trim().startsWith('绩效')) || ''
+        const taskContents = contents.find(c => c.trim().startsWith('作业')) || ''
+        const indParseResult = parseReportingContent(indContents.replace(/绩效[:：]/, ''))
+        const taskParseResult = parseReportingContent(taskContents.replace(/作业[:：]/, ''))
         return {
           id: useGenerateKey(),
           date: formatDate(realDate),
           week,
           nj: user.name,
           userKey: user.key,
-          ...parseResult
+          active: activeContent.trim().replace(/活跃[:：]/, ''),
+          ...indParseResult,
+          ...taskParseResult
         }
       })
     }).flat()
     console.log('解析明细结果：', result)
-    // 未知用户
+    // 未知用户校验
     const unknownUsers = result.filter(r => r.unknownUser).map(r => r.unknownUser)
-    // 未知指标
-    const fields = ['id', 'date', 'week', 'nj', 'userKey']
+    if (unknownUsers.length) {
+      ElMessage.error({
+        duration: 0,
+        showClose: true,
+        message: `导入的报备数据中存在未知用户：${[...new Set(unknownUsers)].join(', ')}，若需添加请先在db文件中创建对应NJ，并重新完成数据初始化步骤。`
+      })
+      return
+    }
+    // 未知活跃校验
+    const usernames = userStore.users.map(u => u.name)
+    const unknownActives = result.map(r => {
+      const unknowns = r.active.split(' ').filter(Boolean).filter(u => !usernames.includes(`${roomPrefix}.${u}`))
+      return unknowns.length ? {
+        nj: r.nj,
+        week: r.week,
+        unknownActive: unknowns
+      } : null
+    }).filter(Boolean)
+    if (unknownActives.length) {
+      ElMessage.error({
+        duration: 0,
+        showClose: true,
+        message: h('p', null, unknownActives.map(item => {
+          return h('p', { style: 'color: #f56c6c; font-size: 14px;' }, `${item.nj} ${item.week}报备内容存在未知活跃：${item.unknownActive.join(', ')}`)
+        }))
+      })
+      return
+    }
+    // 未知指标校验
+    const fields = ['id', 'date', 'week', 'nj', 'userKey', 'active']
     const unknownIndicators = result
       .map(r => {
         const unknowns = Object.entries(r).filter(([k, v]) => !fields.includes(k) && Number.isNaN(v)).map(([k]) => k)
@@ -285,44 +376,17 @@ async function parseExcelFile (file) {
         }
         return null
       }).filter(Boolean)
-    if (unknownUsers.length) {
-      ElMessageBox({
-        type: 'warning',
-        title: '存在未知用户，继续可忽略以下异常',
-        message: `导入的报备数据中存在未知用户：${[...new Set(unknownUsers)].join(', ')}，若需添加请先在db文件中创建对应NJ，并重新完成数据初始化步骤。`,
-        confirmButtonText: '继续'
-      }).then(() => {
-        if (unknownIndicators.length) {
-          ElMessageBox({
-            title: '存在未知指标，继续可忽略以下异常',
-            message: h('p', null, unknownIndicators.map(item => {
-              return h('p', null, `${item.nj} ${item.week}报备内容存在未知指标：${item.unknownIndicators.join(', ')}`)
-            })),
-            confirmButtonText: '继续'
-          }).then(() => {
-            ElMessage.success(`导入完成`)
-            rows.value = result.filter(r => !r.unknownUser)
-          })
-        } else {
-          ElMessage.success(`导入完成`)
-          rows.value = result.filter(r => !r.unknownUser)
-        }
-      })
-    } else if (unknownIndicators.length) {
-      ElMessageBox({
-        title: '存在未知指标，继续可忽略以下异常',
+    if (unknownIndicators.length) {
+      ElMessage.error({
+        duration: 0,
+        showClose: true,
         message: h('p', null, unknownIndicators.map(item => {
-          return h('p', null, `${item.nj} ${item.week}报备内容存在未知指标：${item.unknownIndicators.join(', ')}`)
-        })),
-        confirmButtonText: '继续'
-      }).then(() => {
-        ElMessage.success(`导入完成`)
-        rows.value = result.filter(r => !r.unknownUser)
+          return h('p', { style: 'color: #f56c6c; font-size: 14px;' }, `${item.nj} ${item.week}报备内容存在未知指标：${item.unknownIndicators.join(', ')}`)
+        }))
       })
-    } else {
-      ElMessage.success(`导入完成`)
-      rows.value = result.filter(r => !r.unknownUser)
+      return
     }
+    rows.value = result
   } catch (err) {
     console.error('导入Excel失败', err)
     ElMessage.error('导入Excel失败，请检查文件格式及内容是否正确')
@@ -337,12 +401,12 @@ function parseReportingContent(input) {
       // 按换行符分割
       .split(/[\r\n]+/)
       .filter(line => line.trim())
-      // 按中文逗号或英文逗号分割，支持多种分隔符
-      .map(line => line.split(/[，,]/).filter(line => line.trim()).map(item => item.trim()))
+      // 按中文逗号、英文逗号、空格分割
+      .map(line => line.split(/[，, ]/).filter(line => line.trim()).map(item => item.trim()))
       .flat()
   items.forEach(item => {
     if (!item) return
-    const [name, countStr] = item.split(/[ +]/)
+    const [name, countStr] = item.split(/[+＋]/)
     const count = parseInt(String(countStr).trim(), 10) || 0;
     const indicator = indicatorStore.indicators.find(i => i.name === name || i.align.includes(name))
     if (indicator && !isNaN(count)) {
@@ -355,7 +419,6 @@ function parseReportingContent(input) {
       resultMap.set(name, Number.NaN);
     }
   })
-  // console.log(resultMap)
   return Array.from(resultMap.entries())
     // 转换为各个指标的统计列表
     .map(([key, count]) => {
@@ -385,6 +448,7 @@ async function exportDetailsExcel() {
       '日期',
       '周',
       'NJ',
+      '活跃',
       ...performanceIndicators.map(i => i.name),
       ...taskIndicators.map(i => i.name)
     ]
@@ -395,6 +459,7 @@ async function exportDetailsExcel() {
         item.date || '',
         item.week || '',
         item.nj || '',
+        item.active || '',
         ...performanceIndicators.map(i => Number(item[i.key]) || 0),
         ...taskIndicators.map(i => Number(item[i.key]) || 0),
       ]
@@ -420,6 +485,7 @@ function summary () {
     ElMessage.warning('暂无数据可统计')
     return
   }
+  const allActives = rows.value.map(e => e.active.split(' ')).flat().map(u => `${roomPrefix}.${u}`)
   const total = userStore.users
     .map(u => {
       const userRows = rows.value.filter(r => r.userKey === u.key)
@@ -432,6 +498,7 @@ function summary () {
         }
         return acc
       }, {
+        time: (u.startTime ?? '') && (u.endTime ?? '') ? `${u.startTime}-${u.endTime}` : '',
         nj: u.name,
         njKey: u.key
       })
@@ -446,10 +513,12 @@ function summary () {
         .map(l => l.name)
       return {
         ...item,
+        active: allActives.filter(a => a === item.nj).length,
         taskLevel,
         taskLevelText: taskLevel.length ? `完成${taskLevel.join(',')}级作业` : ''
       }
     })
+    .sort((a, b) => (a.startMinutes - b.startMinutes))
   console.log(total)
   totalSummary.value = total
 }
@@ -461,7 +530,9 @@ async function exportSummaryExcel() {
   try {
     const XLSX = await import('xlsx')
     const header = [
+      '时间',
       'NJ',
+      '活跃',
       ...performanceIndicators.map(i => i.name),
       '作业完成度',
       ...taskIndicators.map(i => i.name)
@@ -470,7 +541,9 @@ async function exportSummaryExcel() {
     const data = [header]
     for (const item of totalSummary.value) {
       const row = [
+        item.time || '',
         item.nj || '',
+        item.active || '',
         ...performanceIndicators.map(i => Number(item[i.key]) || 0),
         item.taskLevelText || '',
         ...taskIndicators.map(i => Number(item[i.key]) || 0),

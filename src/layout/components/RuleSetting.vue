@@ -194,15 +194,15 @@ function prev () {
   emit('prevStep')
 }
 function next() {
-  // const valid = indicatorStore.levels.every(level => {
-  //   const hasRule = rules.value.some(r => r.level === level.name && r.task && r.count > 0)
-  //   if (!hasRule) {
-  //     ElMessage.warning(`请为等级 "${level.name}" 添加至少一条规则`)
-  //     return false
-  //   }
-  //   return true
-  // })
-  // if (!valid) return
+  const valid = indicatorStore.levels.every(level => {
+    const hasRule = rules.value.some(r => r.level === level.name && r.task && r.count > 0)
+    if (!hasRule) {
+      ElMessage.warning(`请为等级 "${level.name}" 添加至少一条规则`)
+      return false
+    }
+    return true
+  })
+  if (!valid) return
   indicatorStore.setLevels(indicatorStore.levels.map(l => ({
     ...l,
     tasks: rules.value.filter(r => r.level === l.name).map(r => ({
