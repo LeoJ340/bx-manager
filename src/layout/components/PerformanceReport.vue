@@ -48,7 +48,7 @@
       <el-table-column fixed prop="date" label="日期" width="105" />
       <el-table-column fixed prop="week" label="周" width="55" />
       <el-table-column fixed prop="nj" label="NJ" width="130" />
-      <el-table-column prop="active" label="活跃" />
+      <el-table-column prop="active" label="活跃" width="160" show-overflow-tooltip />
 
       <el-table-column
         v-for="ind in performanceIndicators"
@@ -105,7 +105,7 @@
     <el-table v-if="totalSummary.length" :data="totalSummary" border max-height="500" class="mt-4" style="width: 100%">
       <el-table-column fixed prop="time" label="时间" width="130" />
       <el-table-column fixed prop="nj" label="NJ" width="130" />
-      <el-table-column prop="active" label="活跃" />
+      <el-table-column prop="active" label="活跃" width="160" show-overflow-tooltip />
       <el-table-column
           v-for="ind in performanceIndicators"
           :key="ind.key"
@@ -242,27 +242,27 @@ function submit() {
       return
     }
     const contents = form.value.content.split(/[\r\n]+/)
-    const activeContent = contents.find(c => c.trim().startsWith('活跃')) || ''
-    const indContents = contents.find(c => c.trim().startsWith('绩效')) || ''
-    const taskContents = contents.find(c => c.trim().startsWith('作业')) || ''
-    const indParseResult = parseReportingContent(indContents.replace(/绩效[:：]/, ''))
-    const taskParseResult = parseReportingContent(taskContents.replace(/作业[:：]/, ''))
+    const activeContent = contents.filter(c => c.trim().startsWith('活跃'))
+      .map(c => c.replace(/活跃[:：]/, ''))
+      .join(' ')
+    const parseResult = parseReportingContent(contents.filter(c => c.trim().startsWith('绩效') || c.trim().startsWith('作业'))
+      .map(c => c.replace(/绩效[:：]/, '').replace(/作业[:：]/, ''))
+      .join(' '))
     const item = {
       id: useGenerateKey(),
       date: formatDate(form.value.date),
       week: weekLabel(form.value.date),
       nj: user.name,
       userKey: user.key,
-      active: activeContent.trim().replace(/活跃[:：]/, ''),
-      ...indParseResult,
-      ...taskParseResult
+      active: activeContent,
+      ...parseResult,
     }
     const continueFun = () => {
       console.log('新增报备项', item)
       rows.value.push(item)
       closeDialog()
     }
-    const unknownIndicators = Object.entries({ ...indParseResult, ...taskParseResult }).filter(([_, v]) => Number.isNaN(v)).map(([k]) => k)
+    const unknownIndicators = Object.entries(parseResult).filter(([_, v]) => Number.isNaN(v)).map(([k]) => k)
     if (unknownIndicators.length) {
       ElMessageBox({
         title: '存在未知指标，继续可忽略以下异常',
@@ -314,20 +314,20 @@ async function parseExcelFile (file) {
         const user = userStore.users.find(u => u.name === username)
         if (!user) return { unknownUser: username }
         const contents = content.split(/[\r\n]+/)
-        const activeContent = contents.find(c => c.trim().startsWith('活跃')) || ''
-        const indContents = contents.find(c => c.trim().startsWith('绩效')) || ''
-        const taskContents = contents.find(c => c.trim().startsWith('作业')) || ''
-        const indParseResult = parseReportingContent(indContents.replace(/绩效[:：]/, ''))
-        const taskParseResult = parseReportingContent(taskContents.replace(/作业[:：]/, ''))
+        const activeContent = contents.filter(c => c.trim().startsWith('活跃'))
+          .map(c => c.replace(/活跃[:：]/, ''))
+          .join(' ')
+        const parseResult = parseReportingContent(contents.filter(c => c.trim().startsWith('绩效') || c.trim().startsWith('作业'))
+          .map(c => c.replace(/绩效[:：]/, '').replace(/作业[:：]/, ''))
+          .join(' '))
         return {
           id: useGenerateKey(),
           date: formatDate(realDate),
           week,
           nj: user.name,
           userKey: user.key,
-          active: activeContent.trim().replace(/活跃[:：]/, ''),
-          ...indParseResult,
-          ...taskParseResult
+          active: activeContent,
+          ...parseResult,
         }
       })
     }).flat()
