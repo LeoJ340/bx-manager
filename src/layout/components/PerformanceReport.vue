@@ -105,7 +105,7 @@
     <el-table v-if="totalSummary.length" :data="totalSummary" border max-height="500" class="mt-4" style="width: 100%">
       <el-table-column fixed prop="time" label="时间" width="130" />
       <el-table-column fixed prop="nj" label="NJ" width="130" />
-      <el-table-column prop="active" label="活跃" width="160" show-overflow-tooltip />
+      <el-table-column prop="active" label="活跃" />
       <el-table-column
           v-for="ind in performanceIndicators"
           :key="ind.key"
