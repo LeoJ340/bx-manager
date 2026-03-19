@@ -33,10 +33,10 @@
           </el-upload>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="exportDetailsExcel" :disabled="!rows.length">导出明细</el-button>
+          <el-button type="primary" @click="openExport" :disabled="!rows.length">导出明细</el-button>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="openDialog">新增报备</el-button>
+          <el-button type="primary" @click="openInput">新增报备</el-button>
         </el-form-item>
         <el-form-item>
           <el-button type="danger" @click="clearRows">清空</el-button>
@@ -122,8 +122,8 @@
     </el-table>
   </el-card>
 
-  <el-dialog v-model="showDialog" title="新增报备">
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+  <el-dialog v-model="inputVisible" title="新增报备">
+    <el-form ref="inputFormRef" :model="form" :rules="rules" label-width="80px">
       <el-form-item label="日期" prop="date">
         <el-date-picker
             v-model="form.date"
@@ -146,8 +146,28 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="closeDialog">取消</el-button>
-      <el-button type="primary" @click="submit">确定</el-button>
+      <el-button @click="closeInput">取消</el-button>
+      <el-button type="primary" @click="confirmInput">确定</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog
+      v-model="exportVisible"
+      title="导出单项指标选择"
+      width="500"
+  >
+    <el-radio-group v-model="exportInd">
+      <el-radio
+          v-for="ind in fullIndicators"
+          :key="ind.key"
+          :value="ind.key"
+      >{{ ind.name }}</el-radio>
+    </el-radio-group>
+    <template #footer>
+      <div class="dialog-footer">
+        <el-button @click="exportVisible = false">取消</el-button>
+        <el-button type="primary" @click="exportDetailsExcel">确定</el-button>
+      </div>
     </template>
   </el-dialog>
 
@@ -169,9 +189,13 @@ import { useAppStore } from '@/stores/useAppStore'
 const { roomPrefix } = useAppStore()
 const userStore = useUserStore()
 const indicatorStore = useIndicatorStore()
+const fullIndicators = indicatorStore.indicators
 const performanceIndicators = indicatorStore.performanceIndicators
 const taskIndicators = indicatorStore.taskIndicators
 
+/**
+ * 明细列表
+ */
 const rows = ref([])
 const searchForm = reactive({
   date: '',
@@ -188,8 +212,11 @@ function search () {
 }
 watch(rows, search)
 
-const showDialog = ref(false)
-const formRef = ref(null)
+/**
+ * 新增填报
+ */
+const inputVisible = ref(false)
+const inputFormRef = ref(null)
 const form = ref({ date: null, userKey: '', content: '' })
 const rules = {
   date: [{ required: true, message: '请选择日期', trigger: 'change' }],
@@ -197,44 +224,19 @@ const rules = {
   content: [{ required: true, message: '请输入报备内容', trigger: 'blur' }],
 }
 
-function openDialog() {
-  showDialog.value = true
+function openInput() {
+  inputVisible.value = true
 }
 
-function closeDialog () {
-  if (formRef.value && formRef.value.resetFields) formRef.value.resetFields()
+function closeInput () {
+  if (inputFormRef.value && inputFormRef.value.resetFields) inputFormRef.value.resetFields()
   form.value = { date: null, userKey: '', content: '' }
-  showDialog.value = false
+  inputVisible.value = false
 }
 
-function excelSerialToDate(serial) {
-  if (serial == null) return null
-  const num = Number(serial)
-  if (Number.isNaN(num)) return null
-  // Excel 序列号基准：1970-01-01 对应 25569，计算毫秒
-  const ms = Math.round((num - 25569) * 86400 * 1000)
-  return new Date(ms)
-}
-
-function formatDate(d) {
-  if (!d) return ''
-  const dt = new Date(d)
-  const y = dt.getFullYear()
-  const m = String(dt.getMonth() + 1).padStart(2, '0')
-  const day = String(dt.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function weekLabel(d) {
-  if (!d) return ''
-  const dt = new Date(d)
-  const map = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  return map[dt.getDay()]
-}
-
-function submit() {
-  if (!formRef.value) return
-  formRef.value.validate((valid) => {
+function confirmInput() {
+  if (!inputFormRef.value) return
+  inputFormRef.value.validate((valid) => {
     if (!valid) return
     const user = userStore.users.find(u => u.key === form.value.userKey)
     if (!user) {
@@ -243,11 +245,11 @@ function submit() {
     }
     const contents = form.value.content.split(/[\r\n]+/)
     const activeContent = contents.filter(c => c.trim().startsWith('活跃'))
-      .map(c => c.replace(/活跃[:：]/, ''))
-      .join(' ')
+    .map(c => c.replace(/活跃[:：]/, ''))
+    .join(' ')
     const parseResult = parseReportingContent(contents.filter(c => c.trim().startsWith('绩效') || c.trim().startsWith('作业'))
-      .map(c => c.replace(/绩效[:：]/, '').replace(/作业[:：]/, ''))
-      .join(' '))
+    .map(c => c.replace(/绩效[:：]/, '').replace(/作业[:：]/, ''))
+    .join(' '))
     const item = {
       id: useGenerateKey(),
       date: formatDate(form.value.date),
@@ -260,7 +262,7 @@ function submit() {
     const continueFun = () => {
       console.log('新增报备项', item)
       rows.value.push(item)
-      closeDialog()
+      closeInput()
     }
     const unknownIndicators = Object.entries(parseResult).filter(([_, v]) => Number.isNaN(v)).map(([k]) => k)
     if (unknownIndicators.length) {
@@ -275,6 +277,30 @@ function submit() {
     }
     continueFun()
   })
+}
+
+// 时间处理函数
+function excelSerialToDate(serial) {
+  if (serial == null) return null
+  const num = Number(serial)
+  if (Number.isNaN(num)) return null
+  // Excel 序列号基准：1970-01-01 对应 25569，计算毫秒
+  const ms = Math.round((num - 25569) * 86400 * 1000)
+  return new Date(ms)
+}
+function formatDate(d) {
+  if (!d) return ''
+  const dt = new Date(d)
+  const y = dt.getFullYear()
+  const m = String(dt.getMonth() + 1).padStart(2, '0')
+  const day = String(dt.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+function weekLabel(d) {
+  if (!d) return ''
+  const dt = new Date(d)
+  const map = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return map[dt.getDay()]
 }
 
 function clearRows () {
@@ -301,7 +327,7 @@ async function parseExcelFile (file) {
     const XLSX = await import('xlsx')
     const workbook = XLSX.read(arrayBuffer, { type: 'array' })
     const sheet = workbook.Sheets[workbook.SheetNames[0]]
-    const sheetRows = XLSX.utils.sheet_to_json(sheet)
+    const sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '' })
     if (!sheetRows.length) {
       ElMessage.error('未检测到Excel文件Sheet1工作表中存在有效的报备数据，请检查文件内容是否正确')
       return
@@ -310,7 +336,9 @@ async function parseExcelFile (file) {
     const result = sheetRows.map(r => {
       const { date, week, ...rest } = r
       const realDate = excelSerialToDate(date)
-      return Object.entries(rest).map(([username, content]) => {
+      return Object.entries(rest)
+        .filter(([column]) => !column.startsWith('__EMPTY'))
+        .map(([username, content]) => {
         const user = userStore.users.find(u => u.name === username)
         if (!user) return { unknownUser: username }
         const contents = content.split(/[\r\n]+/)
@@ -437,49 +465,86 @@ function parseReportingContent(input) {
     }, {})
 }
 
+/**
+ * 导出明细
+ */
+const exportVisible = ref(false)
+function openExport () {
+  exportVisible.value = true
+}
+const exportInd = ref('')
 async function exportDetailsExcel() {
   if (!rows.value || rows.value.length === 0) {
     ElMessage.warning('暂无明细数据可导出')
     return
   }
   try {
-    const XLSX = await import('xlsx')
-    const header = [
-      '日期',
-      '周',
-      'NJ',
-      '活跃',
-      ...performanceIndicators.map(i => i.name),
-      ...taskIndicators.map(i => i.name)
-    ]
-
-    const data = [header]
-    for (const item of rows.value) {
-      const row = [
-        item.date || '',
-        item.week || '',
-        item.nj || '',
-        item.active || '',
-        ...performanceIndicators.map(i => Number(item[i.key]) || 0),
-        ...taskIndicators.map(i => Number(item[i.key]) || 0),
-      ]
-      data.push(row)
-    }
+    const weekColumns = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+    const header = ['时间', '主播', ...weekColumns]
+    const data = [header, ...userStore.users.map(u => {
+      const userRows = rows.value.filter(r => r.userKey === u.key)
+      const weekData = weekColumns.map(week => {
+        return userRows.filter(r => r.week === week).reduce((acc, r) => {
+          const val = Number(r[exportInd.value]) || 0
+          return acc + val
+        }, 0)
+      })
+      return [`${u.startTime}-${u.endTime}`, u.name, ...weekData]
+    })]
     console.log(data)
-
+    const XLSX = await import('xlsx')
     const ws = XLSX.utils.aoa_to_sheet(data)
     const wb = { Sheets: { '明细': ws }, SheetNames: ['明细'] }
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
     const blob = new Blob([wbout], { type: 'application/octet-stream' })
-    downloadFile(blob, `明细_${formatDate(new Date())}.xlsx`)
+    const indicatorName = indicatorStore.indicators.find(i => i.key === exportInd.value)?.name || exportInd.value
+    downloadFile(blob, `${indicatorName}明细_${formatDate(new Date())}.xlsx`)
   } catch (err) {
     console.error('导出 Excel 失败', err)
     ElMessage.error('导出 Excel 失败')
+  } finally {
+    exportVisible.value = false
   }
+  // try {
+  //   const XLSX = await import('xlsx')
+  //   const header = [
+  //     '日期',
+  //     '周',
+  //     'NJ',
+  //     '活跃',
+  //     ...performanceIndicators.map(i => i.name),
+  //     ...taskIndicators.map(i => i.name)
+  //   ]
+  //
+  //   const data = [header]
+  //   for (const item of rows.value) {
+  //     const row = [
+  //       item.date || '',
+  //       item.week || '',
+  //       item.nj || '',
+  //       item.active || '',
+  //       ...performanceIndicators.map(i => Number(item[i.key]) || 0),
+  //       ...taskIndicators.map(i => Number(item[i.key]) || 0),
+  //     ]
+  //     data.push(row)
+  //   }
+  //   console.log(data)
+  //
+  //   const ws = XLSX.utils.aoa_to_sheet(data)
+  //   const wb = { Sheets: { '明细': ws }, SheetNames: ['明细'] }
+  //   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+  //   const blob = new Blob([wbout], { type: 'application/octet-stream' })
+  //   downloadFile(blob, `明细_${formatDate(new Date())}.xlsx`)
+  // } catch (err) {
+  //   console.error('导出 Excel 失败', err)
+  //   ElMessage.error('导出 Excel 失败')
+  // }
 }
 
+/**
+ * 统计总览
+ */
 const totalSummary = ref([])
-
 function summary () {
   if (!rows.value.length) {
     ElMessage.warning('暂无数据可统计')
