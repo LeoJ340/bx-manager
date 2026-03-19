@@ -343,9 +343,9 @@ async function parseExcelFile (file) {
       return
     }
     // 未知活跃校验
-    const usernames = userStore.users.map(u => u.name)
+    const usernames = userStore.users.map(u => u.name.toUpperCase())
     const unknownActives = result.map(r => {
-      const unknowns = r.active.split(' ').filter(Boolean).filter(u => !usernames.includes(`${roomPrefix}.${u}`))
+      const unknowns = r.active.split(' ').filter(Boolean).filter(u => !usernames.includes(`${roomPrefix}.${u.toUpperCase()}`))
       return unknowns.length ? {
         nj: r.nj,
         week: r.week,
@@ -513,7 +513,7 @@ function summary () {
         .map(l => l.name)
       return {
         ...item,
-        active: allActives.filter(a => a === item.nj).length,
+        active: allActives.filter(a => a.toUpperCase() === item.nj.toUpperCase()).length,
         taskLevel,
         taskLevelText: taskLevel.length ? `完成${taskLevel.join(',')}级作业` : ''
       }
