@@ -484,7 +484,7 @@ async function exportDetailsExcel() {
     const data = [header, ...userStore.users.map(u => {
       const userRows = rows.value.filter(r => r.userKey === u.key)
       const weekData = weekColumns.map(week => {
-        return userRows.filter(r => r.week === week).reduce((acc, r) => {
+        return userRows.filter(r => r.week.trim() === week).reduce((acc, r) => {
           const val = Number(r[exportInd.value]) || 0
           return acc + val
         }, 0)
