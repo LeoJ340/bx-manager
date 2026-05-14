@@ -48,15 +48,12 @@
               </div>
               <div class="p-2">
                 <h3 class="mb-2 text-sm font-medium text-center">作业等级</h3>
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <el-tag
-                      v-for="level in levelList"
-                      :key="level.name"
-                      type="primary"
-                  >
-                    {{ level.name }}级 : {{ level.score }}
-                  </el-tag>
-                </div>
+                <el-table :data="rules" style="width: 100%" :span-method="spanMethod">
+                  <el-table-column prop="level" label="等级" />
+                  <el-table-column prop="taskName" label="作业" />
+                  <el-table-column prop="count" label="数量" />
+                  <el-table-column prop="score" label="分数" />
+                </el-table>
               </div>
             </div>
             <div v-else class="flex justify-center text-lg text-gray-700">暂无数据</div>
@@ -84,6 +81,19 @@ const indicatorStore = useIndicatorStore()
 const njList = ref(userStore.users)
 const indicatorList = ref(indicatorStore.indicators)
 const levelList = ref(indicatorStore.levels)
+const rules = ref([])
+buildRules()
+
+function buildRules() {
+  rules.value = levelList.value.map(level => (level.tasks || []).map(task => ({
+    id: useGenerateKey(),
+    level: level.name,
+    task: task.task,
+    taskName: task.taskName,
+    count: task.count,
+    score: level.score,
+  }))).flat()
+}
 
 /**
  * TODO:待优化
@@ -206,10 +216,43 @@ async function parseExcelFile(file) {
     if (workbook.SheetNames.includes(taskLevelSheetName)) {
       const taskLevelSheet = workbook.Sheets[taskLevelSheetName]
       const rows = XLSX.utils.sheet_to_json(taskLevelSheet)
-      levelList.value = Object.entries(rows[0] || {}).map(([key, value]) => ({
-        name: String(key).trim(),
-        score: typeof value === 'number' ? value : (Number(value) || value)
+      const levels = rows.map(row => {
+        const { level, score, ...tasks } = row
+        return {
+          name: level,
+          score: typeof score === 'number' ? score : (Number(score) || score),
+          // 任务列表
+          tasks: Array.from({ length: 2 }).map((_, i) => {
+            const taskName = tasks[`task${i + 1}`]
+            const task = indicatorList.value.find(i => i.name === taskName || i.align.includes(taskName)) || {}
+            return {
+              task: task.key,
+              taskName,
+              count: tasks[`count${i + 1}`],
+              undefinedName: taskName
+            }
+          }),
+        }
+      })
+      if (levels.some(l => l.tasks.some(t => !t.task))) {
+        const undefinedNames = levels
+            .map(level => level.tasks
+                .filter(t => !t.task)
+                .map(t => t.undefinedName))
+            .flat().join(',')
+        ElMessage.error(`${taskLevelSheetName}工作表配置的任务 ${undefinedNames} 未找到，请检查${indicatorSheetName}工作表`)
+        return
+      }
+      levelList.value = levels.map((level) => ({
+        name: level.name,
+        score: level.score,
+        tasks: level.tasks.map((task) => ({
+          task: task.task,
+          taskName: task.taskName,
+          count: task.count
+        }))
       }))
+      buildRules()
     } else {
       ElMessage.error(`Excel 文件中未找到 "${taskLevelSheetName}" 工作表，请检查文件内容`)
     }
@@ -225,6 +268,20 @@ function uploadFile(file, fileListArg) {
   if (f && f instanceof File) {
     parseExcelFile(f)
   }
+}
+
+// 合并等级和分数列：对相同等级的所有项合并显示
+function spanMethod({ row, column, rowIndex }) {
+  if (column.property === 'level' || column.property === 'score') {
+    const lvl = row.level
+    const groupIndexes = rules.value.map((r, i) => ({ lvl: r.level, i })).filter(x => x.lvl === lvl).map(x => x.i)
+    if (!groupIndexes.length) return [1,1]
+    const first = groupIndexes[0]
+    const span = groupIndexes.length
+    if (rowIndex === first) return [span, 1]
+    return [0, 0]
+  }
+  return [1, 1]
 }
 
 const importDataSuccess = computed(() =>

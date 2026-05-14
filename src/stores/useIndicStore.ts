@@ -19,6 +19,7 @@ export interface Level {
   score: number
   tasks?: Array<{
     task: string,
+    taskName: string
     count: number
   }>
 }
