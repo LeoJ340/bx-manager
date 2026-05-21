@@ -188,7 +188,7 @@ async function parseExcelFile(file) {
       // 指标名称重复校验
       const names = rows.map(row => {
         const { name, align } = row
-        const aligns = align ? align.split('，').map(a => a.trim()) : []
+        const aligns = align ? (String(align)).split('，').map(a => a.trim()) : []
         return [`${name}`, ...aligns]
       }).flat()
       // TODO:优化提示，具体到某一个指标
